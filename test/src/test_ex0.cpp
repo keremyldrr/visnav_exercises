@@ -32,7 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <gtest/gtest.h>
 
-TEST(Ex1TestSuite, DummyTest) {
+TEST(Ex0TestSuite, DummyTest) {
   ASSERT_TRUE(2 + 5 == 7);
   ASSERT_LE(23424, 435634563456);
 }

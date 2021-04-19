@@ -121,6 +121,7 @@ Change the build directory to point to the `build` directory directly inside the
 
 After that you should be able to build and run the project.
 To verify that installation worked well run the `test_ceres_se3` executable.
+(First select the executable, then run it. Both can be done at the lower left inside QtCreator.)
 You should get the following output:
 
 <img src="images/TestOutput.png" width="500" />
