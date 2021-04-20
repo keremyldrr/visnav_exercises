@@ -43,8 +43,16 @@ template <class T>
 Eigen::Matrix<T, 3, 3> user_implemented_expmap(
     const Eigen::Matrix<T, 3, 1>& xi) {
   // TODO SHEET 1: implement
-  UNUSED(xi);
-  return Eigen::Matrix<T, 3, 3>();
+ Eigen::Matrix<T,3,3> w_hat;
+  w_hat << 0,-xi(2),xi(1),
+    xi(2),0,-xi(0),
+    -xi(1),xi(0),0;
+
+  double theta = xi.norm();
+  if(theta == 0 )
+    return Eigen::Matrix<T,3,3>::Identity();
+  Eigen::Matrix<T,3,3> res = Eigen::Matrix<T,3,3>::Identity() + w_hat*sin(theta)/theta  + ((1 - cos(theta))/(theta*theta))*w_hat*w_hat;
+  return res;
 }
 
 // Implement log for SO(3)
@@ -52,8 +60,16 @@ template <class T>
 Eigen::Matrix<T, 3, 1> user_implemented_logmap(
     const Eigen::Matrix<T, 3, 3>& mat) {
   // TODO SHEET 1: implement
-  UNUSED(mat);
-  return Eigen::Matrix<T, 3, 1>();
+  double theta = acos((mat.trace() - 1)/2);
+  if(mat == Eigen::Matrix<T,3,3>::Identity()){
+    return Eigen::Matrix<T,3,1>::Zero();
+  }
+   Eigen::Matrix<T, 3, 1> w;
+   w << mat(2,1) - mat(1,2),
+     mat(0,2) - mat(2,0),
+     mat(1,0) - mat(0,1);
+   w = (theta/(2*sin(theta)))*w;
+     return w;
 }
 
 // Implement exp for SE(3)
@@ -61,8 +77,31 @@ template <class T>
 Eigen::Matrix<T, 4, 4> user_implemented_expmap(
     const Eigen::Matrix<T, 6, 1>& xi) {
   // TODO SHEET 1: implement
-  UNUSED(xi);
-  return Eigen::Matrix<T, 4, 4>();
+
+  Eigen::Matrix<T,3,1> w;
+  w << xi(3),xi(4) ,xi(5);
+
+  Eigen::Matrix<T,3,1> v;
+
+  v << xi(0),xi(1) ,xi(2);
+    double theta = w.norm();
+    Eigen::Matrix<T,3,3> w_hat;
+    w_hat << 0,-w(2),w(1),
+      w(2),0,-w(0),
+      -w(1),w(0),0;
+
+  Eigen::Matrix<T,3,3> rot =user_implemented_expmap(w);
+  Eigen::Matrix<T,3,3> J = Eigen::Matrix<T,3,3>::Identity()  + ((1 - cos(theta))/(theta*theta)) * w_hat + ((theta - sin(theta))/(theta*theta*theta))*w_hat*w_hat;
+  if(theta == 0){
+    J = Eigen::Matrix<T,3,3>::Identity();
+  }
+  Eigen::Matrix<T, 4, 4> res = Eigen::Matrix<T,4,4>::Identity();
+  res.block(0,0,3,3) = rot;
+  res.block(0,3,3,1) = J * v;
+
+  return res;
+
+
 }
 
 // Implement log for SE(3)
@@ -70,8 +109,23 @@ template <class T>
 Eigen::Matrix<T, 6, 1> user_implemented_logmap(
     const Eigen::Matrix<T, 4, 4>& mat) {
   // TODO SHEET 1: implement
-  UNUSED(mat);
-  return Eigen::Matrix<T, 6, 1>();
+  Eigen::Matrix<T,3,3> rot = mat.block(0,0,3,3);
+  Eigen::Matrix<T,3,1> t = mat.block(0,3,3,1);
+  Eigen::Matrix<T,3,1> w = user_implemented_logmap(rot);
+  double theta = w.norm();
+  Eigen::Matrix<T,3,3> w_hat;
+  w_hat << 0,-w(2),w(1),
+    w(2),0,-w(0),
+    -w(1),w(0),0;
+  Eigen::Matrix<T,3,3> J_inv = Eigen::Matrix<T,3,3>::Identity() - (1.0f/2.0f)*w_hat + (1.0f/(theta*theta) - ((1.0f + cos(theta))/(2.0f*theta*sin(theta))) )*w_hat*w_hat;
+ Eigen::Matrix<T, 3, 1> v = J_inv * t;
+  if(theta == 0)
+    v = t;
+    // J_inv = Eigen::Matrix<T,3,3>::Identity();
+  Eigen::Matrix<T, 6, 1> res  = Eigen::Matrix<T, 6, 1>::Zero();
+  res.block(0,0,3,1) = v;
+  res.block(3,0,3,1) = w;
+  return res;
 }
 
 }  // namespace visnav
