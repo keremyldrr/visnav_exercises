@@ -37,7 +37,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <visnav/common_types.h>
 
 namespace visnav {
-
+// Taylor approximations from wolphram alpha
+double approximateSinTheta(double x) {
+  return 1 - (x * x) / 6 + x * x * x * x / 120 + x * x * x * x * x * x;
+}
+double approximateCosTheta(double x) {
+  return 0.5 - (x * x) / 24 + (x * x * x * x) / 720 + x * x * x * x * x * x;
+}
 // Implement exp for SO(3)
 template <class T>
 Eigen::Matrix<T, 3, 3> user_implemented_expmap(
@@ -47,10 +53,16 @@ Eigen::Matrix<T, 3, 3> user_implemented_expmap(
   w_hat << 0, -xi(2), xi(1), xi(2), 0, -xi(0), -xi(1), xi(0), 0;
 
   double theta = xi.norm();
-  if (theta == 0) return Eigen::Matrix<T, 3, 3>::Identity();
-  Eigen::Matrix<T, 3, 3> res =
-      Eigen::Matrix<T, 3, 3>::Identity() + w_hat * sin(theta) / theta +
-      ((1 - cos(theta)) / (theta * theta)) * w_hat * w_hat;
+  Eigen::Matrix<T, 3, 3> res;
+  if (theta == 0) {
+    // Eigen::Matrix<T, 3, 3>::Identity()
+    res = Eigen::Matrix<T, 3, 3>::Identity() +
+          w_hat * (approximateSinTheta(0.000000000001)) +
+          (approximateCosTheta(0.000000000001)) * w_hat * w_hat;
+  } else {
+    res = Eigen::Matrix<T, 3, 3>::Identity() + w_hat * sin(theta) / theta +
+          ((1 - cos(theta)) / (theta * theta)) * w_hat * w_hat;
+  }
   return res;
 }
 
@@ -60,12 +72,16 @@ Eigen::Matrix<T, 3, 1> user_implemented_logmap(
     const Eigen::Matrix<T, 3, 3>& mat) {
   // TODO SHEET 1: implement
   double theta = acos((mat.trace() - 1) / 2);
-  if (mat == Eigen::Matrix<T, 3, 3>::Identity()) {
-    return Eigen::Matrix<T, 3, 1>::Zero();
-  }
+
   Eigen::Matrix<T, 3, 1> w;
   w << mat(2, 1) - mat(1, 2), mat(0, 2) - mat(2, 0), mat(1, 0) - mat(0, 1);
-  w = (theta / (2 * sin(theta))) * w;
+
+  if (mat == Eigen::Matrix<T, 3, 3>::Identity()) {
+    w = w * approximateSinTheta(0.000000000001) * 1 /
+        2.0f;  // Eigen::Matrix<T, 3, 1>::Zero();
+  } else {
+    w = (theta / (2 * sin(theta))) * w;
+  }
   return w;
 }
 
@@ -79,7 +95,6 @@ Eigen::Matrix<T, 4, 4> user_implemented_expmap(
   w << xi(3), xi(4), xi(5);
 
   Eigen::Matrix<T, 3, 1> v;
-
   v << xi(0), xi(1), xi(2);
   double theta = w.norm();
   Eigen::Matrix<T, 3, 3> w_hat;
