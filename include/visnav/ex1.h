@@ -39,10 +39,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace visnav {
 // Taylor approximations from wolphram alpha
 double approximateSinTheta(double x) {
-  return 1 - (x * x) / 6 + x * x * x * x / 120 + x * x * x * x * x * x;
+  double x2 = x * x;
+  double x4 = x2 * x2;
+  return 1.0f - (x2) / 6 + x4 / 120 + x4 * x2;
 }
 double approximateCosTheta(double x) {
-  return 0.5 - (x * x) / 24 + (x * x * x * x) / 720 + x * x * x * x * x * x;
+  double x2 = x * x;
+  double x4 = x2 * x2;
+  return 0.5f - (x2) / 24 + (x2 * x2) / 720 + x4 * x2;
 }
 // Implement exp for SO(3)
 template <class T>
@@ -54,11 +58,11 @@ Eigen::Matrix<T, 3, 3> user_implemented_expmap(
 
   double theta = xi.norm();
   Eigen::Matrix<T, 3, 3> res;
-  if (theta == 0) {
+  if (abs(theta) < 0.01) {
     // Eigen::Matrix<T, 3, 3>::Identity()
     res = Eigen::Matrix<T, 3, 3>::Identity() +
-          w_hat * (approximateSinTheta(0.000000000001)) +
-          (approximateCosTheta(0.000000000001)) * w_hat * w_hat;
+          w_hat * (approximateSinTheta(theta)) +
+          (approximateCosTheta(theta)) * w_hat * w_hat;
   } else {
     res = Eigen::Matrix<T, 3, 3>::Identity() + w_hat * sin(theta) / theta +
           ((1 - cos(theta)) / (theta * theta)) * w_hat * w_hat;
@@ -76,8 +80,8 @@ Eigen::Matrix<T, 3, 1> user_implemented_logmap(
   Eigen::Matrix<T, 3, 1> w;
   w << mat(2, 1) - mat(1, 2), mat(0, 2) - mat(2, 0), mat(1, 0) - mat(0, 1);
 
-  if (mat == Eigen::Matrix<T, 3, 3>::Identity()) {
-    w = w * approximateSinTheta(0.000000000001) * 1 /
+  if (abs(theta) < 0.01) {
+    w = w * approximateSinTheta(theta) * 1 /
         2.0f;  // Eigen::Matrix<T, 3, 1>::Zero();
   } else {
     w = (theta / (2 * sin(theta))) * w;
