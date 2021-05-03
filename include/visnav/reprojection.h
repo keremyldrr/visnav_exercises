@@ -60,15 +60,10 @@ struct ReprojectionCostFunctor {
     Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(sResiduals);
     const std::shared_ptr<AbstractCamera<T>> cam =
         AbstractCamera<T>::from_data(cam_model, sIntr);
-    // This is not working properly
-    auto rotWi = T_w_i.inverse().rotationMatrix();
-    auto trWi = T_w_i.inverse().translation();
-    auto rotiC = T_i_c.inverse().rotationMatrix();
-    auto trWiC = T_i_c.inverse().translation();
-    residuals.x() =
-        (p_2d.x()) - cam->project(rotiC * (rotWi * p_3d + trWi) + trWiC).x();
-    residuals.y() =
-        (p_2d.y()) - cam->project(rotiC * (rotWi * p_3d + trWi) + trWiC).y();
+
+    residuals =
+        (p_2d - cam->project(T_i_c.inverse() * (T_w_i.inverse() * p_3d)));
+
     // // TODO SHEET 2: implement the rest of the functor
 
     return true;
