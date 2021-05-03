@@ -370,10 +370,24 @@ void optimize() {
   options.function_tolerance = 0.01 * Sophus::Constants<double>::epsilon();
   options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
   options.num_threads = tbb::task_scheduler_init::default_num_threads();
+  // options.update_state_every_iteration = true;
 
   for (const auto& kv : calib_corners) {
     // TODO: loop over kv.second corners
+    // std::cout << "********************************\n";
+    // for(int i=0;i<7;i++){
+    // std::cout << vec_T_w_i[kv.first.frame_id].data()[i] << " " <<  calib_cam.T_i_c[kv.first.cam_id].data()[i] << " " << calib_cam.intrinsics[0]->data()[i] <<std::endl;
 
+    // }
+    // std::cout << "********************************\n";
+    problem.AddParameterBlock(vec_T_w_i[kv.first.frame_id].data(),
+                              Sophus::SE3d::num_parameters,
+                              new Sophus::test::LocalParameterizationSE3);
+    problem.AddParameterBlock(calib_cam.T_i_c[kv.first.frame_id].data(),
+                              Sophus::SE3d::num_parameters,
+                              new Sophus::test::LocalParameterizationSE3);
+    problem.SetParameterBlockConstant(
+        calib_cam.T_i_c[kv.first.frame_id].data());
     for (size_t i = 0; i < kv.second.corners.size(); i++) {
       // Transformation from body (IMU) frame to world frame
 
@@ -387,15 +401,6 @@ void optimize() {
                                           Sophus::SE3d::num_parameters,
                                           Sophus::SE3d::num_parameters, 8>(
               new ReprojectionCostFunctor(p_2d, p_3d, cam_model));
-
-      problem.AddParameterBlock(vec_T_w_i[kv.first.frame_id].data(),
-                                Sophus::SE3d::num_parameters,
-                                new Sophus::test::LocalParameterizationSE3);
-      problem.AddParameterBlock(calib_cam.T_i_c[kv.first.frame_id].data(),
-                                Sophus::SE3d::num_parameters,
-                                new Sophus::test::LocalParameterizationSE3);
-      problem.SetParameterBlockConstant(
-          calib_cam.T_i_c[kv.first.frame_id].data());
 
       problem.AddResidualBlock(cost_function, NULL,
                                vec_T_w_i[kv.first.frame_id].data(),
