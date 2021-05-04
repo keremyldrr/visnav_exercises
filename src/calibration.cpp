@@ -343,15 +343,15 @@ void compute_projections() {
 
     for (size_t i = 0; i < aprilgrid.aprilgrid_corner_pos_3d.size(); i++) {
       // Transformation from body (IMU) frame to world frame
-      Sophus::SE3d T_i_w = vec_T_w_i[kv.first.frame_id].inverse();
+      Sophus::SE3d T_w_i = vec_T_w_i[kv.first.frame_id];
       // Transformation from camera to body (IMU) frame
-      Sophus::SE3d T_c_i = calib_cam.T_i_c[kv.first.cam_id].inverse();
+      Sophus::SE3d T_i_c = calib_cam.T_i_c[kv.first.cam_id];
       // 3D coordinates of the aprilgrid corner in the world frame
       Eigen::Vector3d p_3d = aprilgrid.aprilgrid_corner_pos_3d[i];
 
       Eigen::Vector2d p_2d;
 
-      p_2d = calib_cam.intrinsics[0]->project(T_c_i * T_i_w * p_3d);
+      p_2d = calib_cam.intrinsics[0]->project((T_w_i * T_i_c).inverse() * p_3d);
       ccd.corners.push_back(p_2d);
     }
 
@@ -376,18 +376,22 @@ void optimize() {
     // TODO: loop over kv.second corners
     // std::cout << "********************************\n";
     // for(int i=0;i<7;i++){
-    // std::cout << vec_T_w_i[kv.first.frame_id].data()[i] << " " <<  calib_cam.T_i_c[kv.first.cam_id].data()[i] << " " << calib_cam.intrinsics[0]->data()[i] <<std::endl;
+    // std::cout << vec_T_w_i[kv.first.frame_id].data()[i] << " " <<
+    // calib_cam.T_i_c[kv.first.cam_id].data()[i] << " " <<
+    // calib_cam.intrinsics[0]->data()[i] <<std::endl;
 
     // }
     // std::cout << "********************************\n";
     problem.AddParameterBlock(vec_T_w_i[kv.first.frame_id].data(),
                               Sophus::SE3d::num_parameters,
                               new Sophus::test::LocalParameterizationSE3);
-    problem.AddParameterBlock(calib_cam.T_i_c[kv.first.frame_id].data(),
+    problem.AddParameterBlock(calib_cam.T_i_c[kv.first.cam_id].data(),
                               Sophus::SE3d::num_parameters,
                               new Sophus::test::LocalParameterizationSE3);
-    problem.SetParameterBlockConstant(
-        calib_cam.T_i_c[kv.first.frame_id].data());
+    if (kv.first.cam_id == 0) {
+      problem.SetParameterBlockConstant(
+          calib_cam.T_i_c[kv.first.cam_id].data());
+    }
     for (size_t i = 0; i < kv.second.corners.size(); i++) {
       // Transformation from body (IMU) frame to world frame
 

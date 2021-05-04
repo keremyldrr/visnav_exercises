@@ -95,12 +95,10 @@ class PinholeCamera : public AbstractCamera<Scalar> {
     const Scalar& cx = param[2];
     const Scalar& cy = param[3];
 
-    Vec3 res;
-
     Scalar mx = (p.x() - cx) / fx;
     Scalar my = (p.y() - cy) / fy;
-    Vec3 temp(mx, my, (Scalar)1);
-    res = temp.normalized();
+    Vec3 res(mx, my, (Scalar)1);
+    res.normalize();
 
     return res;
   }
