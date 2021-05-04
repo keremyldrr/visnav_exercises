@@ -345,13 +345,24 @@ class KannalaBrandt4Camera : public AbstractCamera<Scalar> {
 
     // TODO SHEET 2: implement camera model
     Scalar r = sqrt(x * x + y * y);
-    Scalar theta = atan2(r, z);
-    Scalar dval = d(theta);
-    res.x() = fx * dval * (x / r) + cx;
-    res.y() = fy * dval * (y / r) + cy;
-    if (r == (Scalar)0) {
-      res.x() = cx;
-      res.y() = cy;
+    Scalar theta, dval;
+
+    if (abs(r) < (Scalar)1e-6) {
+      Scalar r3 = r * r * r;
+      Scalar z3 = z * z * z;
+      Scalar r2 = r * r;
+      Scalar r5 = r3 * r2;
+      theta = r / z - (r3) / ((Scalar)3 * z3) +
+              (r5) / ((Scalar)5 * z3 * z * z) + r5 * r2;
+      dval = theta;
+      res.x() = fx * dval * (x) + cx;
+      res.y() = fy * dval * (y) + cy;
+    } else {
+      theta = atan2(r, z);
+      dval = d(theta);
+
+      res.x() = fx * dval * (x / r) + cx;
+      res.y() = fy * dval * (y / r) + cy;
     }
     return res;
   }
@@ -373,8 +384,8 @@ class KannalaBrandt4Camera : public AbstractCamera<Scalar> {
 
     Vec3 res(sin(thetaStar) * (mx / ru), sin(thetaStar) * (my / ru),
              cos(thetaStar));
-    if (ru == (Scalar)0) {
-      res = Vec3(sin(thetaStar), sin(thetaStar), cos(thetaStar));
+    if (ru < (Scalar)1e-6) {
+      res = Vec3(sin(thetaStar) * mx, sin(thetaStar) * my, cos(thetaStar));
     }
     return res;
   }
