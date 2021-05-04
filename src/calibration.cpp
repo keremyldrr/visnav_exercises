@@ -351,7 +351,8 @@ void compute_projections() {
 
       Eigen::Vector2d p_2d;
 
-      p_2d = calib_cam.intrinsics[0]->project((T_w_i * T_i_c).inverse() * p_3d);
+      p_2d = calib_cam.intrinsics[kv.first.cam_id]->project(
+          ((T_w_i * T_i_c).inverse() * p_3d));
       ccd.corners.push_back(p_2d);
     }
 
@@ -409,7 +410,7 @@ void optimize() {
       problem.AddResidualBlock(cost_function, NULL,
                                vec_T_w_i[kv.first.frame_id].data(),
                                calib_cam.T_i_c[kv.first.cam_id].data(),
-                               calib_cam.intrinsics[0]->data());
+                               calib_cam.intrinsics[kv.first.cam_id]->data());
     }
   }
 
