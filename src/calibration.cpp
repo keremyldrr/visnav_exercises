@@ -349,12 +349,10 @@ void compute_projections() {
       // 3D coordinates of the aprilgrid corner in the world frame
       Eigen::Vector3d p_3d = aprilgrid.aprilgrid_corner_pos_3d[i];
 
-      // TODO SHEET 2: project point
-      UNUSED(T_w_i);
-      UNUSED(T_i_c);
-      UNUSED(p_3d);
       Eigen::Vector2d p_2d;
 
+      p_2d = calib_cam.intrinsics[kv.first.cam_id]->project(
+          ((T_w_i * T_i_c).inverse() * p_3d));
       ccd.corners.push_back(p_2d);
     }
 
@@ -373,6 +371,48 @@ void optimize() {
   options.function_tolerance = 0.01 * Sophus::Constants<double>::epsilon();
   options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
   options.num_threads = tbb::task_scheduler_init::default_num_threads();
+  // options.update_state_every_iteration = true;
+
+  for (const auto& kv : calib_corners) {
+    // TODO: loop over kv.second corners
+    // std::cout << "********************************\n";
+    // for(int i=0;i<7;i++){
+    // std::cout << vec_T_w_i[kv.first.frame_id].data()[i] << " " <<
+    // calib_cam.T_i_c[kv.first.cam_id].data()[i] << " " <<
+    // calib_cam.intrinsics[0]->data()[i] <<std::endl;
+
+    // }
+    // std::cout << "********************************\n";
+    problem.AddParameterBlock(vec_T_w_i[kv.first.frame_id].data(),
+                              Sophus::SE3d::num_parameters,
+                              new Sophus::test::LocalParameterizationSE3);
+    problem.AddParameterBlock(calib_cam.T_i_c[kv.first.cam_id].data(),
+                              Sophus::SE3d::num_parameters,
+                              new Sophus::test::LocalParameterizationSE3);
+    if (kv.first.cam_id == 0) {
+      problem.SetParameterBlockConstant(
+          calib_cam.T_i_c[kv.first.cam_id].data());
+    }
+    for (size_t i = 0; i < kv.second.corners.size(); i++) {
+      // Transformation from body (IMU) frame to world frame
+
+      // 3D coordinates of the aprilgrid corner in the world frame
+      Eigen::Vector3d p_3d =
+          aprilgrid.aprilgrid_corner_pos_3d[kv.second.corner_ids[i]];
+
+      Eigen::Vector2d p_2d = kv.second.corners[i];
+      ceres::CostFunction* cost_function =
+          new ceres::AutoDiffCostFunction<ReprojectionCostFunctor, 2,
+                                          Sophus::SE3d::num_parameters,
+                                          Sophus::SE3d::num_parameters, 8>(
+              new ReprojectionCostFunctor(p_2d, p_3d, cam_model));
+
+      problem.AddResidualBlock(cost_function, NULL,
+                               vec_T_w_i[kv.first.frame_id].data(),
+                               calib_cam.T_i_c[kv.first.cam_id].data(),
+                               calib_cam.intrinsics[kv.first.cam_id]->data());
+    }
+  }
 
   // Solve
   ceres::Solver::Summary summary;

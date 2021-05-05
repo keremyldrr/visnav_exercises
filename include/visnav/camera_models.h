@@ -84,15 +84,8 @@ class PinholeCamera : public AbstractCamera<Scalar> {
 
     Vec2 res;
 
-    // TODO SHEET 2: implement camera model
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(x);
-    UNUSED(y);
-    UNUSED(z);
-
+    res.x() = fx * x / z + cx;
+    res.y() = fy * y / z + cy;
     return res;
   }
 
@@ -102,14 +95,10 @@ class PinholeCamera : public AbstractCamera<Scalar> {
     const Scalar& cx = param[2];
     const Scalar& cy = param[3];
 
-    Vec3 res;
-
-    // TODO SHEET 2: implement camera model
-    UNUSED(p);
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
+    Scalar mx = (p.x() - cx) / fx;
+    Scalar my = (p.y() - cy) / fy;
+    Vec3 res(mx, my, (Scalar)1);
+    res.normalize();
 
     return res;
   }
@@ -167,17 +156,9 @@ class ExtendedUnifiedCamera : public AbstractCamera<Scalar> {
 
     Vec2 res;
 
-    // TODO SHEET 2: implement camera model
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(alpha);
-    UNUSED(beta);
-    UNUSED(x);
-    UNUSED(y);
-    UNUSED(z);
-
+    Scalar d = sqrt(beta * (x * x + y * y) + z * z);
+    res.x() = fx * (x / (alpha * d + ((Scalar)1 - alpha) * z)) + cx;
+    res.y() = fy * (y / (alpha * d + ((Scalar)1 - alpha) * z)) + cy;
     return res;
   }
 
@@ -189,18 +170,16 @@ class ExtendedUnifiedCamera : public AbstractCamera<Scalar> {
     const Scalar& alpha = param[4];
     const Scalar& beta = param[5];
 
-    Vec3 res;
+    Scalar mx = (p.x() - cx) / fx;
+    Scalar my = (p.y() - cy) / fy;
+    Scalar r_sqr = mx * mx + my * my;
+    Scalar mz = ((Scalar)1 - beta * alpha * alpha * r_sqr) /
+                (alpha * sqrt((Scalar)1 -
+                              ((Scalar)2 * alpha - (Scalar)1) * beta * r_sqr) +
+                 ((Scalar)1 - alpha));
+    Vec3 res(mx, my, mz);
 
-    // TODO SHEET 2: implement camera model
-    UNUSED(p);
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(alpha);
-    UNUSED(beta);
-
-    return res;
+    return res.normalized();
   }
 
   const VecN& getParam() const { return param; }
@@ -252,17 +231,11 @@ class DoubleSphereCamera : public AbstractCamera<Scalar> {
 
     Vec2 res;
 
-    // TODO SHEET 2: implement camera model
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(xi);
-    UNUSED(alpha);
-    UNUSED(x);
-    UNUSED(y);
-    UNUSED(z);
-
+    Scalar d1 = sqrt(x * x + y * y + z * z);
+    Scalar xid1 = xi * d1;
+    Scalar d2 = sqrt(x * x + y * y + (xid1 + z) * (xid1 + z));
+    res.x() = fx * (x) / (alpha * d2 + ((Scalar)1 - alpha) * (xid1 + z)) + cx;
+    res.y() = fy * (y) / (alpha * d2 + ((Scalar)1 - alpha) * (xid1 + z)) + cy;
     return res;
   }
 
@@ -274,17 +247,19 @@ class DoubleSphereCamera : public AbstractCamera<Scalar> {
     const Scalar& xi = param[4];
     const Scalar& alpha = param[5];
 
-    Vec3 res;
-
-    // TODO SHEET 2: implement camera model
-    UNUSED(p);
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(xi);
-    UNUSED(alpha);
-    return res;
+    Scalar mx = (p.x() - cx) / fx;
+    Scalar my = (p.y() - cy) / fy;
+    Scalar r_sq = mx * mx + my * my;
+    Scalar mz =
+        ((Scalar)1 - alpha * alpha * r_sq) /
+        (alpha * sqrt((Scalar)1 - ((Scalar)2 * alpha - (Scalar)1) * r_sq) +
+         ((Scalar)1 - alpha));
+    Vec3 res(mx, my, mz);
+    Vec3 zeroXi((Scalar)0, (Scalar)0, xi);
+    Scalar mz_sq = mz * mz;
+    Scalar factor =
+        (mz * xi + sqrt(mz_sq + ((Scalar)1 - xi * xi) * r_sq)) / (mz_sq + r_sq);
+    return res * factor - zeroXi;
   }
 
   const VecN& getParam() const { return param; }
@@ -323,16 +298,44 @@ class KannalaBrandt4Camera : public AbstractCamera<Scalar> {
 
   static std::string getName() { return "kb4"; }
   std::string name() const { return getName(); }
+  // DONE: Make this with Horner's
+  Scalar d(Scalar theta) const {
+    const Scalar& k1 = param[4];
+    const Scalar& k2 = param[5];
+    const Scalar& k3 = param[6];
+    const Scalar& k4 = param[7];
 
+    return theta *
+           ((Scalar)1 +
+            theta *
+                (theta *
+                 (k1 +
+                  theta * (theta *
+                           (k2 + theta * (theta *
+                                          (k3 + theta * (theta * (k4)))))))));
+  }
+  // DONE: Make this with Horner's
+  Scalar dderiv(Scalar theta) const {
+    const Scalar& k1 = param[4];
+    const Scalar& k2 = param[5];
+    const Scalar& k3 = param[6];
+    const Scalar& k4 = param[7];
+
+    return (Scalar)1 +
+           theta *
+               (theta *
+                ((Scalar)3 * k1 +
+                 theta * (theta *
+                          ((Scalar)5 * k2 +
+                           theta * (theta *
+                                    ((Scalar)7 * k3 +
+                                     theta * (theta * ((Scalar)9 * k4))))))));
+  }
   inline Vec2 project(const Vec3& p) const {
     const Scalar& fx = param[0];
     const Scalar& fy = param[1];
     const Scalar& cx = param[2];
     const Scalar& cy = param[3];
-    const Scalar& k1 = param[4];
-    const Scalar& k2 = param[5];
-    const Scalar& k3 = param[6];
-    const Scalar& k4 = param[7];
 
     const Scalar& x = p[0];
     const Scalar& y = p[1];
@@ -341,18 +344,26 @@ class KannalaBrandt4Camera : public AbstractCamera<Scalar> {
     Vec2 res;
 
     // TODO SHEET 2: implement camera model
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
-    UNUSED(k1);
-    UNUSED(k2);
-    UNUSED(k3);
-    UNUSED(k4);
-    UNUSED(x);
-    UNUSED(y);
-    UNUSED(z);
+    Scalar r = sqrt(x * x + y * y);
+    Scalar theta, dval;
 
+    if (abs(r) < (Scalar)1e-6) {
+      Scalar r3 = r * r * r;
+      Scalar z3 = z * z * z;
+      Scalar r2 = r * r;
+      Scalar r5 = r3 * r2;
+      theta = r / z - (r3) / ((Scalar)3 * z3) +
+              (r5) / ((Scalar)5 * z3 * z * z) + r5 * r2;
+      dval = theta;
+      res.x() = fx * dval * (x) + cx;
+      res.y() = fy * dval * (y) + cy;
+    } else {
+      theta = atan2(r, z);
+      dval = d(theta);
+
+      res.x() = fx * dval * (x / r) + cx;
+      res.y() = fy * dval * (y / r) + cy;
+    }
     return res;
   }
 
@@ -362,15 +373,20 @@ class KannalaBrandt4Camera : public AbstractCamera<Scalar> {
     const Scalar& cx = param[2];
     const Scalar& cy = param[3];
 
-    Vec3 res;
+    Scalar mx = (p.x() - cx) / fx;
+    Scalar my = (p.y() - cy) / fy;
+    Scalar ru = sqrt(mx * mx + my * my);
+    Scalar thetaStar = ru;
 
-    // TODO SHEET 2: implement camera model
-    UNUSED(p);
-    UNUSED(fx);
-    UNUSED(fy);
-    UNUSED(cx);
-    UNUSED(cy);
+    for (int i = 0; i < 3 && abs(d(thetaStar) - ru) > 1e-15; i++) {
+      thetaStar = thetaStar - ((d(thetaStar) - ru) / (dderiv(thetaStar)));
+    }
 
+    Vec3 res(sin(thetaStar) * (mx / ru), sin(thetaStar) * (my / ru),
+             cos(thetaStar));
+    if (ru < (Scalar)1e-6) {
+      res = Vec3(sin(thetaStar) * mx, sin(thetaStar) * my, cos(thetaStar));
+    }
     return res;
   }
 
