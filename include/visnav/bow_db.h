@@ -51,6 +51,7 @@ class BowDatabase {
     // inverted index. You can assume the image hasn't been added before.
     UNUSED(fcid);
     UNUSED(bow_vector);
+    
   }
 
   inline void query(const BowVector& bow_vector, size_t num_results,
