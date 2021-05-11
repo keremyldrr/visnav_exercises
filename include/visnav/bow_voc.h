@@ -65,11 +65,31 @@ class BowVocabulary {
     // feature and descriptor of the cluster centroid. Iterate until you reach
     // the leaf node. Save m_nodes[id].word_id and m_nodes[id].weight of the
     // leaf node to the corresponding variables.
-    UNUSED(feature);
-    UNUSED(word_id);
-    UNUSED(weight);
-  }
 
+    int id = 0;
+    int minw = 0;
+    auto* ptr = &m_nodes[0];
+    while (ptr->isLeaf() == false) {
+      int mindiff = 256;
+      int minj = 0;
+      for (int j = 0; j < m_nodes[id].children.size(); j++) {
+        int childId = ptr->children[j];
+
+        int dist = (m_nodes[childId].descriptor ^ feature).count();
+        if (dist < mindiff) {
+          mindiff = dist;
+          minj = j;
+        }
+      }
+
+      id = ptr->children[minj];
+      // std::cout << id << std::endl;
+      ptr = &m_nodes[id];
+    }
+
+    weight = m_nodes[id].weight;
+    word_id = m_nodes[id].word_id;
+  }
   inline void transform(const std::vector<TDescriptor>& features,
                         BowVector& v) const {
     v.clear();
@@ -81,7 +101,34 @@ class BowVocabulary {
     // TODO SHEET 3: transform the entire vector of features from an image to
     // the BoW representation (you can use transformFeatureToWord function). Use
     // L1 norm to normalize the resulting BoW vector.
-    UNUSED(features);
+    double sum = 0;
+    for (int i = 0; i < features.size(); i++) {
+      WordId wid;
+      WordValue weight;
+
+      transformFeatureToWord(features[i], wid, weight);
+
+      if (weight != 0) {
+        bool in = false;
+        for (int j = 0; j < v.size() && in == false; j++) {
+          if (v[j].first == wid) {
+            v[j].second += weight;
+            in = true;
+            break;
+          }
+        }
+        if (!in) {
+          v.push_back(std::pair<WordId, WordValue>(wid, weight));
+        }
+      }
+    }
+    sum = 0;
+    for (int k = 0; k < v.size(); k++) {
+      sum += std::abs(v[k].second);
+    }
+    for (int k = 0; k < v.size(); k++) {
+      v[k].second /= sum;
+    }
   }
 
   void save(const std::string& filename) const {
