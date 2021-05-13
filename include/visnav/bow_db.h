@@ -70,8 +70,9 @@ class BowDatabase {
     std::unordered_map<FrameCamId, double> instances;
 
     for (unsigned long i = 0; i < bow_vector.size(); i++) {
-      int ind = bow_vector[i].first;  // wordID
+      unsigned int ind = bow_vector[i].first;  // wordID
 
+      if (inverted_index.find(ind) == inverted_index.end()) continue;
       for (unsigned long j = 0; j < inverted_index.at(ind).size(); j++) {
         double dist =
             abs(inverted_index.at(ind)[j].second - bow_vector[i].second) -
@@ -82,7 +83,7 @@ class BowDatabase {
         instances[inverted_index.at(ind)[j].first] += dist;
       }
     }
-    int id = 0;
+    unsigned long id = 0;
     std::vector<std::pair<FrameCamId, double>> vec(instances.begin(),
                                                    instances.end());
     std::sort(vec.begin(), vec.end(), compareFrameDist);
