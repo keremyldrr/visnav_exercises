@@ -43,7 +43,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <opencv2/imgproc/imgproc.hpp>
 
 #include <visnav/common_types.h>
-
+#include <algorithm>
 namespace visnav {
 
 const int PATCH_SIZE = 31;
@@ -147,7 +147,6 @@ void detectKeypoints(const pangolin::ManagedImage<uint8_t>& img_raw,
     }
   }
 }
-
 void computeAngles(const pangolin::ManagedImage<uint8_t>& img_raw,
                    KeypointsData& kd, bool rotate_features) {
   kd.corner_angles.resize(kd.corners.size());
@@ -159,14 +158,22 @@ void computeAngles(const pangolin::ManagedImage<uint8_t>& img_raw,
     const int cy = p[1];
 
     double angle = 0;
-
+    double m01 = 0;
+    double m10 = 0;
     if (rotate_features) {
+      for (int ix = -HALF_PATCH_SIZE; ix <= HALF_PATCH_SIZE; ix++) {
+        for (int iy = -HALF_PATCH_SIZE; iy <= HALF_PATCH_SIZE; iy++) {
+          // doSomething(CX + ix, CY + iy);
+          if (((iy * iy) + ix * ix) <= HALF_PATCH_SIZE * HALF_PATCH_SIZE) {
+            m01 += iy * img_raw((cx + ix), cy + iy);
+            m10 += ix * img_raw((cx + ix), cy + iy);
+          }
+        }
+      }
+      angle = atan2(m01, m10);
       // TODO SHEET 3: compute angle
-      UNUSED(img_raw);
-      UNUSED(cx);
-      UNUSED(cy);
     }
-
+    // std::cout<< angle << std::endl;
     kd.corner_angles[i] = angle;
   }
 }
@@ -184,11 +191,23 @@ void computeDescriptors(const pangolin::ManagedImage<uint8_t>& img_raw,
     const int cx = p[0];
     const int cy = p[1];
 
+    for (int j = 0; j < 256; j++) {
+      Eigen::Vector2d p_a(pattern_31_x_a[j], pattern_31_y_a[j]);
+      Eigen::Vector2d p_b(pattern_31_x_b[j], pattern_31_y_b[j]);
+
+      Eigen::Matrix2d rot;
+      rot << cos(angle), -sin(angle), sin(angle), cos(angle);
+      p_b = rot * p_b;
+
+      p_a = rot * p_a;
+      int I1 = img_raw(cx + std::round(p_a.x()), cy + std::round(p_a.y()));
+      int I2 = img_raw(cx + std::round(p_b.x()), cy + std::round(p_b.y()));
+      if (I1 < I2)
+        descriptor[j] = 1;
+      else
+        descriptor[j] = 0;
+    }
     // TODO SHEET 3: compute descriptor
-    UNUSED(img_raw);
-    UNUSED(angle);
-    UNUSED(cx);
-    UNUSED(cy);
 
     kd.corner_descriptors[i] = descriptor;
   }
@@ -201,19 +220,79 @@ void detectKeypointsAndDescriptors(
   computeAngles(img_raw, kd, rotate_features);
   computeDescriptors(img_raw, kd);
 }
+// int diff_best_two()
 
+std::pair<int, int> arg_min(int* arr, int size) {
+  int idx =
+      static_cast<int>(std::distance(arr, std::min_element(arr, arr + size)));
+  int* minDist = std::min_element(arr, arr + size);
+  std::pair<int, int> temp(idx, *minDist);
+  return temp;
+}
 void matchDescriptors(const std::vector<std::bitset<256>>& corner_descriptors_1,
                       const std::vector<std::bitset<256>>& corner_descriptors_2,
                       std::vector<std::pair<int, int>>& matches, int threshold,
                       double dist_2_best) {
   matches.clear();
+  int** c12distances = new int*[corner_descriptors_1.size()];
+  for (long unsigned int i = 0; i < corner_descriptors_1.size(); i++) {
+    c12distances[i] = new int[corner_descriptors_2.size()];
+    std::fill(c12distances[i], c12distances[i] + corner_descriptors_2.size(),
+              0);
+  }
+  int** c21distances = new int*[corner_descriptors_2.size()];
+  for (long unsigned i = 0; i < corner_descriptors_2.size(); i++) {
+    c21distances[i] = new int[corner_descriptors_1.size()];
+    std::fill(c21distances[i], c21distances[i] + corner_descriptors_1.size(),
+              0);
+  }
+
+  for (long unsigned i = 0; i < corner_descriptors_1.size(); i++) {
+    for (long unsigned j = 0; j < corner_descriptors_2.size(); j++) {
+      int dist = (corner_descriptors_1[i] ^ corner_descriptors_2[j]).count();
+      c12distances[i][j] = dist;
+      c21distances[j][i] = dist;
+    }
+  }
+  for (unsigned long int i = 0; i < corner_descriptors_1.size(); i++) {
+    std::pair<int, int> m =
+        arg_min(c12distances[i], corner_descriptors_2.size());
+    if (m.second >= threshold) {
+      continue;  // threshold check
+    } else {
+      std::pair<int, int> m2 =
+          arg_min(c21distances[m.first], corner_descriptors_1.size());
+      if (m2.first != i) {
+        continue;
+      } else {
+        int temp2 = c21distances[m.first][i];
+        c21distances[m.first][i] = 256;
+        std::pair<int, int> m4 =
+            arg_min(c21distances[m.first], corner_descriptors_1.size());
+        c21distances[m.first][i] = temp2;
+        if (m4.second < m.second * dist_2_best) {
+          continue;
+        }
+        int tempd = c12distances[i][m.first];
+        c12distances[i][m.first] = 256;
+        std::pair<int, int> m3 =
+            arg_min(c12distances[i], corner_descriptors_2.size());
+        c12distances[i][m.first] = tempd;
+        // second best
+        if (m3.second < m.second * dist_2_best) {
+          continue;
+        } else {
+          matches.push_back(std::pair<int, int>(i, m.first));
+        }
+      }
+    }
+  }
 
   // TODO SHEET 3: match features
-  UNUSED(corner_descriptors_1);
-  UNUSED(corner_descriptors_2);
-  UNUSED(matches);
-  UNUSED(threshold);
-  UNUSED(dist_2_best);
+
+  delete c12distances;
+  delete c21distances;
 }
 
+// namespace visnav
 }  // namespace visnav

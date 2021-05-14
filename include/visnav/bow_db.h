@@ -33,7 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 
 #include <fstream>
-
+#include <algorithm>
 #include <tbb/concurrent_unordered_map.h>
 #include <tbb/concurrent_vector.h>
 
@@ -42,6 +42,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace visnav {
 
+bool compareFrameDist(std::pair<FrameCamId, double> lhs,
+                      std::pair<FrameCamId, double> rhs) {
+  return lhs.second < rhs.second;
+}
 class BowDatabase {
  public:
   BowDatabase() {}
@@ -49,8 +53,11 @@ class BowDatabase {
   inline void insert(const FrameCamId& fcid, const BowVector& bow_vector) {
     // TODO SHEET 3: add a bow_vector that corresponds to frame fcid to the
     // inverted index. You can assume the image hasn't been added before.
-    UNUSED(fcid);
-    UNUSED(bow_vector);
+
+    for (unsigned long i = 0; i < bow_vector.size(); i++) {
+      std::pair<FrameCamId, WordValue> temp(fcid, bow_vector[i].second);
+      inverted_index[bow_vector[i].first].emplace_back(temp);
+    }
   }
 
   inline void query(const BowVector& bow_vector, size_t num_results,
@@ -60,9 +67,37 @@ class BowDatabase {
     // to accumulate scores and std::partial_sort for getting the closest
     // results. You should use L1 difference as the distance measure. You can
     // assume that BoW descripors are L1 normalized.
-    UNUSED(bow_vector);
-    UNUSED(num_results);
-    UNUSED(results);
+    std::unordered_map<FrameCamId, double> instances;
+
+    for (unsigned long i = 0; i < bow_vector.size(); i++) {
+      unsigned int ind = bow_vector[i].first;  // wordID
+
+      if (inverted_index.find(ind) == inverted_index.end()) continue;
+      for (unsigned long j = 0; j < inverted_index.at(ind).size(); j++) {
+        double dist =
+            abs(inverted_index.at(ind)[j].second - bow_vector[i].second) -
+            abs(inverted_index.at(ind)[j].second) - abs(bow_vector[i].second);
+        if (instances[inverted_index.at(ind)[j].first] == 0) {
+          instances[inverted_index.at(ind)[j].first] = 2;
+        }
+        instances[inverted_index.at(ind)[j].first] += dist;
+      }
+    }
+    unsigned long id = 0;
+    std::vector<std::pair<FrameCamId, double>> vec(instances.begin(),
+                                                   instances.end());
+    std::sort(vec.begin(), vec.end(), compareFrameDist);
+    for (const auto& elm : vec) {
+      if (id < num_results)
+        results.emplace_back(elm);
+      else {
+        break;
+      }
+      id++;
+    }
+    // UNUSED(bow_vector);
+    // UNUSED(num_results);
+    // UNUSED(results);
   }
 
   void clear() { inverted_index.clear(); }
