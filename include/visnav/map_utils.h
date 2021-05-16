@@ -141,36 +141,34 @@ int add_new_landmarks_between_cams(const FrameCamId& fcid0,
 
   bearingVectors_t vec2;
   // run method 1
+  std::vector<TrackId> new_track_ids;
 
-  for (int i = 0; i < shared_track_ids.size(); i++) {
+  for (unsigned long i = 0; i < shared_track_ids.size(); i++) {
+    if (landmarks.find(shared_track_ids[i]) != landmarks.end()) continue;
+
     FeatureTrack track = feature_tracks.at(shared_track_ids[i]);
     auto f0 = track[fcid0];
     auto f1 = track[fcid1];
     auto c0 = feature_corners.at(fcid0).corners[f0];
     auto c1 = feature_corners.at(fcid1).corners[f1];
-    if (landmarks.find(shared_track_ids[i]) == landmarks.end()) {
-      bearingVector_t p0(calib_cam.intrinsics[fcid0.cam_id]->unproject(c0));
-      bearingVector_t p1(calib_cam.intrinsics[fcid1.cam_id]->unproject(c1));
-      vec1.push_back(p0);
-      vec2.push_back(p1);
-    }
+    bearingVector_t p0(calib_cam.intrinsics[fcid0.cam_id]->unproject(c0));
+    bearingVector_t p1(calib_cam.intrinsics[fcid1.cam_id]->unproject(c1));
+    vec1.push_back(p0);
+    vec2.push_back(p1);
+    new_track_ids.push_back(shared_track_ids[i]);
+
     /// triangulate and add to landmarks here
   }
 
-  // Transformation from fcid0 to fcid1
-  auto fc0to1 = cameras.at(fcid1).T_w_c.inverse() * cameras.at(fcid0).T_w_c;
   auto fc1to0 = cameras.at(fcid0).T_w_c.inverse() * cameras.at(fcid1).T_w_c;
   relative_pose::CentralRelativeAdapter adapter(
-      vec1, vec2, fc1to0.translation(), fc0to1.rotationMatrix());
-  std::vector<TrackId> new_track_ids;
+      vec1, vec2, fc1to0.translation(), fc1to0.rotationMatrix());
 
-  for (int j = 0; j < shared_track_ids.size(); j++) {
-    if (landmarks.find(shared_track_ids[j]) != landmarks.end()) continue;
-
+  for (unsigned long j = 0; j < new_track_ids.size(); j++) {
     point_t point = triangulation::triangulate(adapter, j);
     Landmark temp;
-    temp.p = point;
-    FeatureTrack track = feature_tracks.at(shared_track_ids[j]);
+    temp.p = cameras.at(fcid0).T_w_c * point;
+    FeatureTrack track = feature_tracks.at(new_track_ids[j]);
     // temp.obs.insert(std::make_pair(fcid0, track.at(fcid0)));
 
     for (auto kv : cameras) {
@@ -181,7 +179,7 @@ int add_new_landmarks_between_cams(const FrameCamId& fcid0,
         temp.obs.insert(std::make_pair(kv.first, track.at(cid)));
       }
     }
-    landmarks[shared_track_ids[j]] = temp;
+    landmarks[new_track_ids[j]] = temp;
   }
   // TODO SHEET 4: Triangulate all new features and add to the map
 
