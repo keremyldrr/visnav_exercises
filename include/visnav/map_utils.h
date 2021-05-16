@@ -149,8 +149,8 @@ int add_new_landmarks_between_cams(const FrameCamId& fcid0,
     auto c0 = feature_corners.at(fcid0).corners[f0];
     auto c1 = feature_corners.at(fcid1).corners[f1];
     if (landmarks.find(shared_track_ids[i]) == landmarks.end()) {
-      bearingVector_t p0(calib_cam.intrinsics[0]->unproject(c0));
-      bearingVector_t p1(calib_cam.intrinsics[1]->unproject(c1));
+      bearingVector_t p0(calib_cam.intrinsics[fcid0.cam_id]->unproject(c0));
+      bearingVector_t p1(calib_cam.intrinsics[fcid1.cam_id]->unproject(c1));
       vec1.push_back(p0);
       vec2.push_back(p1);
     }
@@ -158,14 +158,14 @@ int add_new_landmarks_between_cams(const FrameCamId& fcid0,
   }
 
   relative_pose::CentralRelativeAdapter adapter(
-      vec1, vec2, calib_cam.T_i_c[1].inverse().translation(),
-      calib_cam.T_i_c[1].rotationMatrix());
+      vec1, vec2, calib_cam.T_i_c[fcid1.cam_id].translation(),
+      calib_cam.T_i_c[fcid1.cam_id].rotationMatrix());
   std::vector<TrackId> new_track_ids;
 
   for (int j = 0; j < shared_track_ids.size(); j++) {
     point_t point = triangulation::triangulate(adapter, j);
     Landmark temp;
-    temp.p = cameras.at(fcid0).T_w_c * point;
+    temp.p = point;
     FeatureTrack track = feature_tracks.at(shared_track_ids[j]);
     temp.obs.insert(std::make_pair(fcid0, track.at(fcid0)));
     temp.obs.insert(std::make_pair(fcid1, track.at(fcid1)));
