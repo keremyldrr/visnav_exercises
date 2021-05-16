@@ -52,6 +52,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <visnav/local_parameterization_se3.hpp>
 
 #include <visnav/tracks.h>
+using namespace opengv;
 
 namespace visnav {
 
@@ -136,14 +137,52 @@ int add_new_landmarks_between_cams(const FrameCamId& fcid0,
     return 0;
   }
 
-  // at the end of the function this will contain all newly added track ids
+  bearingVectors_t vec1;
+
+  bearingVectors_t vec2;
+  // run method 1
+
+  for (int i = 0; i < shared_track_ids.size(); i++) {
+    FeatureTrack track = feature_tracks.at(shared_track_ids[i]);
+    auto f0 = track[fcid0];
+    auto f1 = track[fcid1];
+    auto c0 = feature_corners.at(fcid0).corners[f0];
+    auto c1 = feature_corners.at(fcid1).corners[f1];
+    if (landmarks.find(shared_track_ids[i]) == landmarks.end()) {
+      bearingVector_t p0(calib_cam.intrinsics[0]->unproject(c0));
+      bearingVector_t p1(calib_cam.intrinsics[1]->unproject(c1));
+      vec1.push_back(p0);
+      vec2.push_back(p1);
+    }
+    /// triangulate and add to landmarks here
+  }
+
+  relative_pose::CentralRelativeAdapter adapter(
+      vec1, vec2, calib_cam.T_i_c[1].inverse().translation(),
+      calib_cam.T_i_c[1].rotationMatrix());
   std::vector<TrackId> new_track_ids;
 
+  for (int j = 0; j < shared_track_ids.size(); j++) {
+    point_t point = triangulation::triangulate(adapter, j);
+    Landmark temp;
+    temp.p = cameras.at(fcid0).T_w_c * point;
+    FeatureTrack track = feature_tracks.at(shared_track_ids[j]);
+    temp.obs.insert(std::make_pair(fcid0, track.at(fcid0)));
+    temp.obs.insert(std::make_pair(fcid1, track.at(fcid1)));
+
+    // temp.obs = feature_tracks.at(shared_track_ids[j]);
+    for (auto kv : cameras) {
+      auto cid = kv.first;
+
+      if (track.find(cid) != track.end())  // if not in
+      {
+        temp.obs.insert(std::make_pair(kv.first, track.at(cid)));
+      }
+    }
+    if (landmarks.find(shared_track_ids[j]) == landmarks.end())
+      landmarks[shared_track_ids[j]] = temp;
+  }
   // TODO SHEET 4: Triangulate all new features and add to the map
-  UNUSED(calib_cam);
-  UNUSED(feature_corners);
-  UNUSED(cameras);
-  UNUSED(landmarks);
 
   return new_track_ids.size();
 }
@@ -169,11 +208,12 @@ bool initialize_scene_from_stereo_pair(const FrameCamId& fcid0,
   }
 
   // TODO SHEET 4: Initialize scene (add initial cameras and landmarks)
-  UNUSED(calib_cam);
-  UNUSED(feature_corners);
-  UNUSED(feature_tracks);
-  UNUSED(cameras);
-  UNUSED(landmarks);
+
+  cameras[fcid0].T_w_c = Sophus::SE3d(Eigen::Matrix4d::Identity());
+  cameras[fcid1].T_w_c = calib_cam.T_i_c[fcid1.cam_id];  // TODO : Make sure
+
+  add_new_landmarks_between_cams(fcid0, fcid1, calib_cam, feature_corners,
+                                 feature_tracks, cameras, landmarks);
 
   return true;
 }
