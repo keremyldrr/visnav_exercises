@@ -264,7 +264,7 @@ void localize_camera(
               sac_problems::absolute_pose::AbsolutePoseSacProblem::KNEIP));
   // run ransac
   ransac.sac_model_ = absposeproblem_ptr;
-  double f = calib_cam.intrinsics[fcid.cam_id]->getParam()[0];
+  double f = 500;
   ransac.threshold_ =
       1.0 - cos(atan(reprojection_error_pnp_inlier_threshold_pixel / f));
   ransac.max_iterations_ = 5000;
@@ -317,11 +317,14 @@ void bundle_adjustment(const Corners& feature_corners,
                        Calibration& calib_cam, Cameras& cameras,
                        Landmarks& landmarks) {
   ceres::Problem problem;
-
+  ceres::LossFunctionWrapper* loss_function = NULL;
   // TODO SHEET 4: Setup optimization problem
+  ceres::HuberLoss *huber = new ceres::HuberLoss(options.huber_parameter);
 
-  ceres::HuberLoss* loss_function = NULL;
-  for (auto& cam : cameras) {
+  if (options.use_huber)
+    loss_function = new ceres::LossFunctionWrapper(huber,ceres::Ownership::TAKE_OWNERSHIP);
+  
+  for ( auto& cam : cameras) {
     problem.AddParameterBlock(cam.second.T_w_c.data(),
                               Sophus::SE3d::num_parameters,
                               new Sophus::test::LocalParameterizationSE3);
@@ -329,45 +332,35 @@ void bundle_adjustment(const Corners& feature_corners,
     if (fixed_cameras.find(cam.first) != fixed_cameras.end()) {
       problem.SetParameterBlockConstant(cam.second.T_w_c.data());
     }
-    auto intrParams =
+    double * intrParams =
         (double*)calib_cam.intrinsics[cam.first.cam_id]->getParam().data();
     problem.AddParameterBlock(intrParams, 8);
     if (options.optimize_intrinsics == false) {
-      problem.SetParameterBlockConstant(
-          calib_cam.intrinsics[cam.first.cam_id]->getParam().data());
+      problem.SetParameterBlockConstant(intrParams);
     }
   }
+  for (auto& lm : landmarks) {
+    Eigen::Vector3d p_3d = lm.second.p;
 
-  for (auto& cam : cameras) {
-    for (auto& lm : landmarks) {
-      // for (auto& track : lm.second.obs) {
-      auto p_3d = lm.second.p;
+    for (const auto& ob : lm.second.obs) {
 
-      FeatureTrack track = lm.second.obs;
-      if (track.find(cam.first) == track.end()) {
-        continue;
-      }
-      auto intrParams =
-          (double*)calib_cam.intrinsics[cam.first.cam_id]->getParam().data();
-
-      auto f0 = track[cam.first];
-
-      auto p_2d = feature_corners.at(cam.first).corners[f0];
+      Eigen::Vector2d p_2d = feature_corners.at(ob.first).corners[ob.second];
 
       ceres::CostFunction* cost_function = new ceres::AutoDiffCostFunction<
           BundleAdjustmentReprojectionCostFunctor, 2,
           Sophus::SE3d::num_parameters, 3, 8>(
           new BundleAdjustmentReprojectionCostFunctor(
-              p_2d, calib_cam.intrinsics[cam.first.cam_id]->name()));
+              p_2d, calib_cam.intrinsics[ob.first.cam_id]->name()));
 
-      if (options.use_huber)
-        loss_function = new ceres::HuberLoss(options.huber_parameter);
-
+     
+      double * intrParams =
+          (double*)calib_cam.intrinsics[ob.first.cam_id]->getParam().data();
       problem.AddResidualBlock(cost_function, loss_function,
-                               cam.second.T_w_c.data(), p_3d.data(),
+                               cameras.at(ob.first).T_w_c.data(), p_3d.data(),
                                intrParams);
     }
   }
+
   // Solve
   // }
 
@@ -376,6 +369,7 @@ void bundle_adjustment(const Corners& feature_corners,
   ceres_options.linear_solver_type = ceres::SPARSE_SCHUR;
   ceres_options.num_threads = tbb::task_scheduler_init::default_num_threads();
   ceres::Solver::Summary summary;
+  loss_function->Reset(new ceres::HuberLoss(1.0), ceres::Ownership::TAKE_OWNERSHIP);
 
   Solve(ceres_options, &problem, &summary);
   switch (options.verbosity_level) {
