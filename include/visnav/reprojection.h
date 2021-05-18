@@ -88,6 +88,7 @@ struct BundleAdjustmentReprojectionCostFunctor {
     Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(sResiduals);
     const std::shared_ptr<AbstractCamera<T>> cam =
         AbstractCamera<T>::from_data(cam_model, sIntr);
+    residuals = (p_2d - cam->project((T_w_c).inverse() * p_3d_w));
 
     // TODO SHEET 4: Compute reprojection error
 
