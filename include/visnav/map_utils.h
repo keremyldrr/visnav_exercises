@@ -324,8 +324,8 @@ void bundle_adjustment(const Corners& feature_corners,
 
   if (options.use_huber)
     loss_function = new ceres::HuberLoss(options.huber_parameter);
-  
-  for ( auto& cam : cameras) {
+
+  for (auto& cam : cameras) {
     problem.AddParameterBlock(cam.second.T_w_c.data(),
                               Sophus::SE3d::num_parameters,
                               new Sophus::test::LocalParameterizationSE3);
@@ -333,18 +333,16 @@ void bundle_adjustment(const Corners& feature_corners,
     if (fixed_cameras.find(cam.first) != fixed_cameras.end()) {
       problem.SetParameterBlockConstant(cam.second.T_w_c.data());
     }
-    double * intrParams =
+    double* intrParams =
         (double*)calib_cam.intrinsics[cam.first.cam_id]->getParam().data();
     problem.AddParameterBlock(intrParams, 8);
     if (options.optimize_intrinsics == false) {
       problem.SetParameterBlockConstant(intrParams);
     }
   }
-  
-  for (auto& lm : landmarks) {
 
+  for (auto& lm : landmarks) {
     for (const auto& ob : lm.second.obs) {
-      
       Eigen::Vector2d p_2d = feature_corners.at(ob.first).corners[ob.second];
       // std::cout << p_2d.transpose() << std::endl;
       ceres::CostFunction* cost_function = new ceres::AutoDiffCostFunction<
@@ -353,12 +351,11 @@ void bundle_adjustment(const Corners& feature_corners,
           new BundleAdjustmentReprojectionCostFunctor(
               p_2d, calib_cam.intrinsics[ob.first.cam_id]->name()));
 
-     
-      double * intrParams =
+      double* intrParams =
           (double*)calib_cam.intrinsics[ob.first.cam_id]->getParam().data();
       problem.AddResidualBlock(cost_function, loss_function,
-                               cameras.at(ob.first).T_w_c.data(), lm.second.p.data(),
-                               intrParams);
+                               cameras.at(ob.first).T_w_c.data(),
+                               lm.second.p.data(), intrParams);
     }
   }
 
