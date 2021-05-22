@@ -289,7 +289,13 @@ void matchDescriptors(const std::vector<std::bitset<256>>& corner_descriptors_1,
   }
 
   // TODO SHEET 3: match features
+  for (long unsigned int i = 0; i < corner_descriptors_1.size(); i++) {
+    delete c12distances[i];
+  }
 
+  for (long unsigned i = 0; i < corner_descriptors_2.size(); i++) {
+    delete c21distances[i];
+  }
   delete c12distances;
   delete c21distances;
 }
