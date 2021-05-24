@@ -52,6 +52,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <visnav/local_parameterization_se3.hpp>
 
 #include <visnav/tracks.h>
+using namespace opengv;
 
 namespace visnav {
 
@@ -136,14 +137,52 @@ int add_new_landmarks_between_cams(const FrameCamId& fcid0,
     return 0;
   }
 
-  // at the end of the function this will contain all newly added track ids
+  bearingVectors_t vec1;
+
+  bearingVectors_t vec2;
+  // run method 1
   std::vector<TrackId> new_track_ids;
 
+  for (unsigned long i = 0; i < shared_track_ids.size(); i++) {
+    if (landmarks.find(shared_track_ids[i]) != landmarks.end()) continue;
+
+    FeatureTrack track = feature_tracks.at(shared_track_ids[i]);
+    auto f0 = track[fcid0];
+    auto f1 = track[fcid1];
+    auto c0 = feature_corners.at(fcid0).corners[f0];
+    auto c1 = feature_corners.at(fcid1).corners[f1];
+    bearingVector_t p0(calib_cam.intrinsics[fcid0.cam_id]->unproject(c0));
+    bearingVector_t p1(calib_cam.intrinsics[fcid1.cam_id]->unproject(c1));
+    vec1.push_back(p0);
+    vec2.push_back(p1);
+    new_track_ids.push_back(shared_track_ids[i]);
+
+    /// triangulate and add to landmarks here
+  }
+
+  auto fc1to0 = cameras.at(fcid0).T_w_c.inverse() * cameras.at(fcid1).T_w_c;
+  relative_pose::CentralRelativeAdapter adapter(
+      vec1, vec2, fc1to0.translation(), fc1to0.rotationMatrix());
+
+  for (unsigned long j = 0; j < new_track_ids.size(); j++) {
+    point_t point = triangulation::triangulate(adapter, j);
+    Landmark temp;
+    temp.p = cameras.at(fcid0).T_w_c * point;
+    FeatureTrack track = feature_tracks.at(new_track_ids[j]);
+    // temp.obs.insert(std::make_pair(fcid0, track.at(fcid0)));
+
+    for (auto kv : cameras) {
+      auto cid = kv.first;
+
+      if (track.find(cid) != track.end())  // if not in
+      {
+        // temp.obs.insert(std::make_pair(kv.first, track.at(cid)));
+        temp.obs[cid] = track.at(cid);
+      }
+    }
+    landmarks[new_track_ids[j]] = temp;
+  }
   // TODO SHEET 4: Triangulate all new features and add to the map
-  UNUSED(calib_cam);
-  UNUSED(feature_corners);
-  UNUSED(cameras);
-  UNUSED(landmarks);
 
   return new_track_ids.size();
 }
@@ -169,11 +208,12 @@ bool initialize_scene_from_stereo_pair(const FrameCamId& fcid0,
   }
 
   // TODO SHEET 4: Initialize scene (add initial cameras and landmarks)
-  UNUSED(calib_cam);
-  UNUSED(feature_corners);
-  UNUSED(feature_tracks);
-  UNUSED(cameras);
-  UNUSED(landmarks);
+
+  cameras[fcid0].T_w_c = Sophus::SE3d(Eigen::Matrix4d::Identity());
+  cameras[fcid1].T_w_c = calib_cam.T_i_c[fcid1.cam_id];  // TODO : Make sure
+
+  add_new_landmarks_between_cams(fcid0, fcid1, calib_cam, feature_corners,
+                                 feature_tracks, cameras, landmarks);
 
   return true;
 }
@@ -199,15 +239,59 @@ void localize_camera(
     Sophus::SE3d& T_w_c, std::vector<TrackId>& inlier_track_ids) {
   inlier_track_ids.clear();
 
+  bearingVectors_t bvectors;
+  points_t points;
+  for (auto shared_tid : shared_track_ids) {
+    FeatureTrack track = feature_tracks.at(shared_tid);
+    auto f0 = track[fcid];
+
+    auto c0 = feature_corners.at(fcid).corners[f0];
+
+    bearingVector_t bvec(calib_cam.intrinsics[fcid.cam_id]->unproject(c0));
+    point_t point = landmarks.at(shared_tid).p;
+    bvectors.push_back(bvec);
+    points.push_back(point);
+  }
+
+  absolute_pose::CentralAbsoluteAdapter adapter(bvectors, points);
   // TODO SHEET 4: Localize a new image in a given map
-  UNUSED(fcid);
-  UNUSED(shared_track_ids);
-  UNUSED(calib_cam);
-  UNUSED(feature_corners);
-  UNUSED(feature_tracks);
-  UNUSED(landmarks);
-  UNUSED(T_w_c);
-  UNUSED(reprojection_error_pnp_inlier_threshold_pixel);
+  sac::Ransac<sac_problems::absolute_pose::AbsolutePoseSacProblem> ransac;
+  // create an AbsolutePoseSacProblem
+  // (algorithm is selectable: KNEIP, GAO, or EPNP)
+  std::shared_ptr<sac_problems::absolute_pose::AbsolutePoseSacProblem>
+      absposeproblem_ptr(
+          new sac_problems::absolute_pose::AbsolutePoseSacProblem(
+              adapter,
+              sac_problems::absolute_pose::AbsolutePoseSacProblem::KNEIP));
+  // run ransac
+  ransac.sac_model_ = absposeproblem_ptr;
+  double f = 500;
+  ransac.threshold_ =
+      1.0 - cos(atan(reprojection_error_pnp_inlier_threshold_pixel / f));
+  ransac.max_iterations_ = 5000;
+
+  ransac.computeModel();
+  if (ransac.inliers_.size() >= 3) {
+    adapter.sett(ransac.model_coefficients_.block(0, 3, 3, 1));
+    adapter.setR(ransac.model_coefficients_.block(0, 0, 3, 3));
+    transformation_t refined_transformation =
+        absolute_pose::optimize_nonlinear(adapter, ransac.inliers_);
+    Eigen::Matrix4d pose = Eigen::Matrix4d::Identity();
+
+    // refined_transformation.block(0,3,3,1) =  pose.block(0,3,3,1) ;
+    ransac.sac_model_->selectWithinDistance(refined_transformation,
+                                            ransac.threshold_, ransac.inliers_);
+
+    pose.block(0, 0, 3, 3) = refined_transformation.block(0, 0, 3, 3);
+    pose.block(0, 3, 3, 1) = refined_transformation.block(0, 3, 3, 1);
+    T_w_c = Sophus::SE3d(pose);
+    for (unsigned long i = 0; i < ransac.inliers_.size(); i++) {
+      int ind = ransac.inliers_[i];
+      inlier_track_ids.push_back(shared_track_ids[ind]);
+    }
+  }
+
+  // get the result
 }
 
 struct BundleAdjustmentOptions {
@@ -234,21 +318,56 @@ void bundle_adjustment(const Corners& feature_corners,
                        Calibration& calib_cam, Cameras& cameras,
                        Landmarks& landmarks) {
   ceres::Problem problem;
-
+  ceres::HuberLoss* loss_function = NULL;
   // TODO SHEET 4: Setup optimization problem
-  UNUSED(feature_corners);
-  UNUSED(options);
-  UNUSED(fixed_cameras);
-  UNUSED(calib_cam);
-  UNUSED(cameras);
-  UNUSED(landmarks);
+  // ceres::HuberLoss *huber = new ceres::HuberLoss(options.huber_parameter);
+
+  if (options.use_huber)
+    loss_function = new ceres::HuberLoss(options.huber_parameter);
+
+  for (auto& cam : cameras) {
+    problem.AddParameterBlock(cam.second.T_w_c.data(),
+                              Sophus::SE3d::num_parameters,
+                              new Sophus::test::LocalParameterizationSE3);
+
+    if (fixed_cameras.find(cam.first) != fixed_cameras.end()) {
+      problem.SetParameterBlockConstant(cam.second.T_w_c.data());
+    }
+    double* intrParams =
+        (double*)calib_cam.intrinsics[cam.first.cam_id]->getParam().data();
+    problem.AddParameterBlock(intrParams, 8);
+    if (options.optimize_intrinsics == false) {
+      problem.SetParameterBlockConstant(intrParams);
+    }
+  }
+
+  for (auto& lm : landmarks) {
+    for (const auto& ob : lm.second.obs) {
+      Eigen::Vector2d p_2d = feature_corners.at(ob.first).corners[ob.second];
+      // std::cout << p_2d.transpose() << std::endl;
+      ceres::CostFunction* cost_function = new ceres::AutoDiffCostFunction<
+          BundleAdjustmentReprojectionCostFunctor, 2,
+          Sophus::SE3d::num_parameters, 3, 8>(
+          new BundleAdjustmentReprojectionCostFunctor(
+              p_2d, calib_cam.intrinsics[ob.first.cam_id]->name()));
+
+      double* intrParams =
+          (double*)calib_cam.intrinsics[ob.first.cam_id]->getParam().data();
+      problem.AddResidualBlock(cost_function, loss_function,
+                               cameras.at(ob.first).T_w_c.data(),
+                               lm.second.p.data(), intrParams);
+    }
+  }
 
   // Solve
+  // }
+
   ceres::Solver::Options ceres_options;
   ceres_options.max_num_iterations = options.max_num_iterations;
   ceres_options.linear_solver_type = ceres::SPARSE_SCHUR;
   ceres_options.num_threads = tbb::task_scheduler_init::default_num_threads();
   ceres::Solver::Summary summary;
+
   Solve(ceres_options, &problem, &summary);
   switch (options.verbosity_level) {
     // 0: silent
