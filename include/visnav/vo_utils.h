@@ -89,7 +89,7 @@ int landmarkDistance(const Landmark& lm, const Corners& feature_corners,
   return minDist;
 }
 
-std::pair<int, int> arg_min(int* arr, int size) {
+std::pair<int, int> arg_min2(int* arr, int size) {
   int idx =
       static_cast<int>(std::distance(arr, std::min_element(arr, arr + size)));
   int* minDist = std::min_element(arr, arr + size);
@@ -149,14 +149,14 @@ void find_matches_landmarks(
 
   for (unsigned long int i = 0; i < kdl.corners.size(); i++) {
     std::pair<FeatureId, TrackId> m =
-        arg_min(distances[i], projected_track_ids.size());
+        arg_min2(distances[i], projected_track_ids.size());
     if (m.second >= feature_match_threshold) {
       continue;  // threshold check
     } else {
       int tempd = distances[i][m.first];
       distances[i][m.first] = 256;
       std::pair<FeatureId, TrackId> m3 =
-          arg_min(distances[i], projected_track_ids.size());
+          arg_min2(distances[i], projected_track_ids.size());
       distances[i][m.first] = tempd;
       // second best
       if (m3.second <= m.second * feature_match_dist_2_best) {
