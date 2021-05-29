@@ -65,7 +65,7 @@ void project_landmarks(
     auto point_in_cam = current_pose.inverse() * lm.second.p;
     if (point_in_cam.z() >= cam_z_threshold) {
       auto p_2d = cam->project(point_in_cam);
-      if (p_2d.x() <= cam->width() && p_2d.y() <= cam->height() &&
+      if (p_2d.x() <= cam->width() - 1 && p_2d.y() <= cam->height() - 1 &&
           p_2d.x() >= 0 && p_2d.y() >= 0) {
         projected_points.push_back(p_2d);
         projected_track_ids.push_back(lm.first);
@@ -119,14 +119,12 @@ void find_matches_landmarks(
 
   for (unsigned long int pt = 0; pt < kdl.corners.size(); pt++) {
     distances[pt] = new int[projected_points.size()];
-    std::fill(distances[pt], distances[pt] + projected_points.size(), 0);
   }
 
   int** inv_distances = new int*[projected_points.size()];
 
-  for (unsigned long int pt = 0; pt < kdl.corners.size(); pt++) {
+  for (unsigned long int pt = 0; pt < projected_points.size(); pt++) {
     inv_distances[pt] = new int[kdl.corners.size()];
-    std::fill(inv_distances[pt], inv_distances[pt] + kdl.corners.size(), 0);
   }
 
   for (unsigned long int i = 0; i < kdl.corners.size(); i++) {
@@ -167,17 +165,17 @@ void find_matches_landmarks(
       ;
     }
   }
+
+  for (long unsigned int i = 0; i < kdl.corners.size(); i++) {
+    delete[] distances[i];
+  }
+
+  for (long unsigned i = 0; i < projected_track_ids.size(); i++) {
+    delete[] inv_distances[i];
+  }
+  delete[] distances;
+  delete[] inv_distances;
 }
-
-// // for (long unsigned int i = 0; i < projected_track_ids.size(); i++) {
-// //     delete distances[i];
-// //   }
-
-// //   for (long unsigned i = 0; i < kdl.corners.size(); i++) {
-// //     delete inv_distances[i];
-// //   }
-// delete distances;
-// delete inv_distances;
 
 void localize_camera(const Sophus::SE3d& current_pose,
                      const std::shared_ptr<AbstractCamera<double>>& cam,
